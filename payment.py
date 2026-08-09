@@ -5,7 +5,7 @@ from aiogram.fsm.context import FSMContext
 import database as db
 import texts
 import keyboards as kb
-from config import TARIFFS, CARD_NUMBER, CARD_HOLDER, ADMIN_ID
+from config import TARIFFS, CARD_NUMBER, ADMIN_ID
 
 router = Router()
 
@@ -26,7 +26,7 @@ async def tariff_chosen(call: CallbackQuery, state: FSMContext):
     await state.update_data(tariff_key=key)
 
     text = texts.tariff_chosen_text(tariff["label"], tariff["price"]) + (
-        f"\n\n💳 Карта: {CARD_NUMBER}\n👤 Получатель: {CARD_HOLDER}"
+        f"\n\n💳 Карта: {CARD_NUMBER}"
     )
 
     # QR-код с реквизитами (просто чтобы удобно было отсканировать номер карты)
