@@ -1,5 +1,6 @@
+import os
 from aiogram import Router, F, Bot
-from aiogram.types import Message, CallbackQuery, BufferedInputFile
+from aiogram.types import Message, CallbackQuery, FSInputFile
 from aiogram.fsm.context import FSMContext
 
 import database as db
@@ -8,6 +9,8 @@ import keyboards as kb
 from config import TARIFFS, CARD_NUMBER, ADMIN_ID
 
 router = Router()
+
+QR_PATH = os.path.join(os.path.dirname(os.path.dirname(file)), "qr_payment.png")
 
 
 @router.message(F.text == "💳 Оплата")
@@ -29,21 +32,13 @@ async def tariff_chosen(call: CallbackQuery, state: FSMContext):
         f"\n\n💳 Карта: {CARD_NUMBER}"
     )
 
-    # QR-код с реквизитами (просто чтобы удобно было отсканировать номер карты)
-    try:
-        import qrcode
-        import io
-        qr_payload = f"Карта: {CARD_NUMBER}, сумма: {tariff['price']}₽"
-        img = qrcode.make(qr_payload)
-        buf = io.BytesIO()
-        img.save(buf, format="PNG")
-        buf.seek(0)
+    if os.path.exists(QR_PATH):
         await call.message.answer_photo(
-            BufferedInputFile(buf.read(), filename="qr.png"),
+            FSInputFile(QR_PATH),
             caption=text,
             reply_markup=kb.paid_confirm_kb(),
         )
-    except Exception:
+    else:
         await call.message.answer(text, reply_markup=kb.paid_confirm_kb())
 
     await call.answer()
