@@ -10,7 +10,7 @@ from config import TARIFFS, CARD_NUMBER, ADMIN_ID
 
 router = Router()
 
-QR_PATH = os.path.join(os.path.dirname(os.path.dirname(file)), "qr_payment.png")
+QR_PATH = "qr_payment.png"
 
 
 @router.message(F.text == "💳 Оплата")
