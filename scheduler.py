@@ -1,50 +1,42 @@
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
+import datetime
 from aiogram import Bot
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 import database as db
-from config import ADMIN_ID, ADMIN_USERNAME
-from yoomoney_client import poll_yoomoney
+import texts
+from config import ADMIN_ID
 
 
-async def check_debts(bot: Bot):
-    players = await db.get_all_confirmed_players()
-    for p in players:
-        stats = await db.get_player_stats(p["tg_id"])
-        if not stats:
+async def check_access(bot: Bot):
+    """Запускается регулярно: шлёт напоминания и уведомления об истечении срока."""
+    users = await db.get_active_users()
+    now = datetime.datetime.now()
+
+    for user in users:
+        if not user["access_until"]:
             continue
-        debt_days = stats["debt_days"]
+        until = datetime.datetime.fromisoformat(user["access_until"])
+        remaining = until - now
 
-        if debt_days == 0:
-            if p["warned_day6"] or p["mentioned_day7"]:
-                await db.set_debt_flags(p["tg_id"], warned_day6=0, mentioned_day7=0)
-            continue
+        # За 1 день до истечения — напомнить, если ещё не напоминали
+        if datetime.timedelta(0) < remaining <= datetime.timedelta(days=1) and not user["notified_soon"]:
+            await bot.send_message(user["user_id"], texts.EXPIRY_SOON_USER)
+            await db.mark_notified(user["user_id"], "notified_soon")
 
-        if debt_days >= 6 and not p["warned_day6"]:
-            await db.set_debt_flags(p["tg_id"], warned_day6=1)
-            try:
-                await bot.send_message(
-                    p["tg_id"],
-                    f"⚠️ У тебя долг {debt_days} дн. по оплате сервера. "
-                    f"Пожалуйста, пополни баланс, иначе доступ может быть ограничен.",
-                )
-            except Exception:
-                pass
-
-        if debt_days >= 7 and not p["mentioned_day7"] and ADMIN_ID:
-            await db.set_debt_flags(p["tg_id"], mentioned_day7=1)
-            mention = f"@{ADMIN_USERNAME}" if ADMIN_USERNAME else "администратор"
-            try:
-                await bot.send_message(
-                    ADMIN_ID,
-                    f"🔴 {mention}, у игрока {p['mc_nick']} долг {debt_days} дн. "
-                    f"Требуется решение (бан до погашения долга).",
-                )
-            except Exception:
-                pass
+        # Срок истёк — уведомить игрока и админа один раз
+        if remaining <= datetime.timedelta(0) and not user["notified_expired"]:
+            await bot.send_message(user["user_id"], texts.EXPIRED_USER)
+            await bot.send_message(
+                ADMIN_ID,
+                f"⛔ У игрока {user['mc_nick']} (id: {user['user_id']}) истёк срок доступа.\n"
+                f"Убери его из белого списка сервера.",
+            )
+            await db.mark_notified(user["user_id"], "notified_expired")
 
 
 def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
-    scheduler = AsyncIOScheduler(timezone="Europe/Moscow")
-    scheduler.add_job(check_debts, "cron", hour=12, minute=0, args=[bot])
-    scheduler.add_job(poll_yoomoney, "interval", minutes=5, args=[bot])
+    scheduler = AsyncIOScheduler()
+    # Проверка каждые 3 часа — этого достаточно для дневной точности напоминаний
+    scheduler.add_job(check_access, "interval", hours=3, args=[bot])
+    scheduler.start()
     return scheduler
